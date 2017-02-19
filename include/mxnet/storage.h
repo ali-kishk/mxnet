@@ -8,7 +8,6 @@
 
 #include <memory>
 #include "./base.h"
-
 namespace mxnet {
 
 /*!

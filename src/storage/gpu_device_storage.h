@@ -6,10 +6,10 @@
 #ifndef MXNET_STORAGE_GPU_DEVICE_STORAGE_H_
 #define MXNET_STORAGE_GPU_DEVICE_STORAGE_H_
 
-#include "mxnet/base.h"
-#include "../common/cuda_utils.h"
+#include <mxnet/base.h>
 #if MXNET_USE_CUDA
 #include <cuda_runtime.h>
+#include "../common/cuda_utils.h"
 #endif  // MXNET_USE_CUDA
 #include <new>
 
@@ -40,8 +40,10 @@ inline void* GPUDeviceStorage::Alloc(size_t size) {
   cudaError_t e = cudaMalloc(&ret, size);
   if (e != cudaSuccess && e != cudaErrorCudartUnloading)
     throw std::bad_alloc();
+#elif MXNET_USE_OPENCL
+  ret = new cl::Buffer(vex::current_context().context(0), CL_MEM_READ_WRITE, size);
 #else   // MXNET_USE_CUDA
-  LOG(FATAL) << "Please compile with CUDA enabled";
+  LOG(FATAL) << "Please compile with CUDA or OpenCL enabled";
 #endif  // MXNET_USE_CUDA
   return ret;
 }
@@ -54,8 +56,10 @@ inline void GPUDeviceStorage::Free(void* ptr) {
   if (err != cudaSuccess && err != cudaErrorCudartUnloading) {
     LOG(FATAL) << "CUDA: " << cudaGetErrorString(err);
   }
+#elif MXNET_USE_OPENCL
+  delete static_cast<cl::Buffer*>(ptr);
 #else   // MXNET_USE_CUDA
-  LOG(FATAL) << "Please compile with CUDA enabled";
+  LOG(FATAL) << "Please compile with CUDA or OpenCL enabled";
 #endif  // MXNET_USE_CUDA
 }
 

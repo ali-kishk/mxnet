@@ -6,22 +6,21 @@
 #ifndef MXNET_STORAGE_POOLED_STORAGE_MANAGER_H_
 #define MXNET_STORAGE_POOLED_STORAGE_MANAGER_H_
 
-#if MXNET_USE_CUDA
-  #include <cuda_runtime.h>
-#endif  // MXNET_USE_CUDA
 #include <mxnet/base.h>
 #include <unordered_map>
 #include <vector>
 #include <mutex>
 #include <new>
 #include "./storage_manager.h"
+#if MXNET_USE_CUDA
+  #include <cuda_runtime.h>
 #include "../common/cuda_utils.h"
-
+#endif  // MXNET_USE_CUDA
 
 namespace mxnet {
 namespace storage {
 
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA || MXNET_USE_OPENCL
 /*!
  * \brief Storage manager with a memory pool on gpu.
  */
@@ -39,18 +38,9 @@ class GPUPooledStorageManager final : public StorageManager {
   ~GPUPooledStorageManager() {
     ReleaseAll();
   }
-
   void* Alloc(size_t size) override;
   void Free(void* ptr, size_t size) override;
-
-  void DirectFree(void* ptr, size_t size) override {
-    cudaError_t err = cudaFree(ptr);
-    // ignore unloading error, as memory has already been recycled
-    if (err != cudaSuccess && err != cudaErrorCudartUnloading) {
-      LOG(FATAL) << "CUDA: " << cudaGetErrorString(err);
-    }
-    used_memory_ -= size;
-  }
+  void DirectFree(void* ptr, size_t size) override;
 
  private:
   void ReleaseAll();
@@ -67,32 +57,60 @@ class GPUPooledStorageManager final : public StorageManager {
 
 void* GPUPooledStorageManager::Alloc(size_t size) {
   std::lock_guard<std::mutex> lock(mutex_);
+  void* ret;
   auto&& reuse_it = memory_pool_.find(size);
   if (reuse_it == memory_pool_.end() || reuse_it->second.size() == 0) {
+#if MXNET_USE_CUDA
     size_t free, total;
     cudaMemGetInfo(&free, &total);
     if (free <= total * reserve_ / 100 || size > free - total * reserve_ / 100)
       ReleaseAll();
-
-    void* ret = nullptr;
     cudaError_t e = cudaMalloc(&ret, size);
     if (e != cudaSuccess && e != cudaErrorCudartUnloading) {
       LOG(FATAL) << "cudaMalloc failed: " << cudaGetErrorString(e);
     }
+#elif MXNET_USE_OPENCL
+    try {
+      try {
+        ret = new cl::Buffer(vex::current_context().context(0), CL_MEM_READ_WRITE, size);
+      } catch (cl::Error& e) {
+        if (e.err() == CL_MEM_OBJECT_ALLOCATION_FAILURE) {
+          ReleaseAll();
+          ret = new cl::Buffer(vex::current_context().context(0), CL_MEM_READ_WRITE, size);
+        } else {
+          LOG(FATAL) << "clCreateBuffer failed: " << e.what();
+        }
+      }
+    } catch (cl::Error& e) {
+      LOG(FATAL) << "clCreateBuffer failed: " << e.what();
+    }
+#endif
     used_memory_ += size;
-    return ret;
   } else {
     auto&& reuse_pool = reuse_it->second;
-    auto ret = reuse_pool.back();
+    ret = reuse_pool.back();
     reuse_pool.pop_back();
-    return ret;
   }
+  return ret;
 }
 
 void GPUPooledStorageManager::Free(void* ptr, size_t size) {
   std::lock_guard<std::mutex> lock(mutex_);
   auto&& reuse_pool = memory_pool_[size];
   reuse_pool.push_back(ptr);
+}
+
+void GPUPooledStorageManager::DirectFree(void* ptr, size_t size) {
+#if MXNET_USE_CUDA
+  cudaError_t err = cudaFree(ptr);
+  // ignore unloading error, as memory has already been recycled
+  if (err != cudaSuccess && err != cudaErrorCudartUnloading) {
+    LOG(FATAL) << "CUDA: " << cudaGetErrorString(err);
+  }
+#elif MXNET_USE_OPENCL
+  delete static_cast<cl::Buffer*>(ptr);
+#endif
+  used_memory_ -= size;
 }
 
 void GPUPooledStorageManager::ReleaseAll() {
@@ -103,7 +121,7 @@ void GPUPooledStorageManager::ReleaseAll() {
   }
   memory_pool_.clear();
 }
-#endif  // MXNET_USE_CUDA
+#endif  // MXNET_USE_CUDA || MXNET_USE_OPENCL
 
 }  // namespace storage
 }  // namespace mxnet

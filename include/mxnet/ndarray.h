@@ -78,10 +78,24 @@ class NDArray {
    */
   inline TBlob data() const {
     TBlob res;
+#if MXNET_USE_OPENCL
+    if (ptr_->shandle.ctx.dev_mask() == gpu::kDevMask) {
+      if (offset_ == 0) {
+          res = TBlob(*static_cast<cl::Buffer*>(ptr_->shandle.dptr), shape_, gpu::kDevMask, dtype_);
+      } else {
+        cl_buffer_region sub_buffer_info = {.origin = offset_, .size = shape_.Size()};
+        res = TBlob(static_cast<cl::Buffer*>(ptr_->shandle.dptr)->createSubBuffer(CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &sub_buffer_info),
+                    shape_, gpu::kDevMask, dtype_);
+      }
+    } else {
+#endif
     MSHADOW_TYPE_SWITCH(dtype_, DType, {
       res = TBlob(static_cast<DType*>(ptr_->shandle.dptr)
         + offset_, shape_, ptr_->shandle.ctx.dev_mask());
     });
+#if MXNET_USE_OPENCL
+    }
+#endif
 #if MKL_EXPERIMENTAL == 1
     res.Mkl_mem_ = Mkl_mem_;
 #endif
@@ -92,12 +106,25 @@ class NDArray {
    */
   inline TBlob raw_data(index_t offset, index_t length) const {
     TBlob res;
-    TShape raw_shape(1);
-    raw_shape[0] = length;
+    TShape raw_shape({length});
+#if MXNET_USE_OPENCL
+    if (ptr_->shandle.ctx.dev_mask() == gpu::kDevMask) {
+      if (offset_ + offset == 0) {
+          res = TBlob(*static_cast<cl::Buffer*>(ptr_->shandle.dptr), raw_shape, gpu::kDevMask, dtype_);
+      } else {
+        cl_buffer_region sub_buffer_info = {.origin = offset_ + offset, .size = length};
+        res = TBlob(static_cast<cl::Buffer*>(ptr_->shandle.dptr)->createSubBuffer(CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &sub_buffer_info),
+                    raw_shape, gpu::kDevMask, dtype_);
+      }
+    } else {
+#endif
     MSHADOW_TYPE_SWITCH(dtype_, DType, {
       res = TBlob(static_cast<DType*>(ptr_->shandle.dptr)
         + offset_ + offset, raw_shape, ptr_->shandle.ctx.dev_mask());
     });
+#if MXNET_USE_OPENCL
+    }
+#endif
 #if MKL_EXPERIMENTAL == 1
     res.Mkl_mem_ = Mkl_mem_;
 #endif
@@ -368,11 +395,16 @@ class NDArray {
       var = Engine::Get()->NewVariable();
       if (data.dev_mask_ == cpu::kDevMask) {
         shandle.ctx = Context::CPU();
+        shandle.dptr = data.dptr_;
       } else {
         CHECK_EQ(data.dev_mask_, gpu::kDevMask);
         shandle.ctx = Context::GPU(dev_id);
+#if MXNET_USE_OPENCL
+        shandle.dptr = new cl::Buffer(data.cl_buf_);
+#else
+        shandle.dptr = data.dptr_;
+#endif
       }
-      shandle.dptr = data.dptr_;
       shandle.size = data.shape_.Size() * mshadow::mshadow_sizeof(data.type_flag_);
     }
     /*! \brief construct a new chunk */

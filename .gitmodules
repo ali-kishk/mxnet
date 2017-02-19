@@ -10,3 +10,7 @@
 [submodule "nnvm"]
 	path = nnvm
 	url = https://github.com/dmlc/nnvm
+[submodule "vexcl"]
+	path = vexcl
+	url = https://github.com/ddemidov/vexcl.git
+	branch = master

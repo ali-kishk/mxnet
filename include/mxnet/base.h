@@ -25,12 +25,20 @@
 #endif
 
 /*!
- *\brief whether to use cuda support
+ * \brief whether to use CUDA or OpenCL support. At most one could be enabled.
  */
-#ifndef MXNET_USE_CUDA
+#if !defined(MXNET_USE_CUDA) && !defined(MXNET_USE_OPENCL)
 #define MXNET_USE_CUDA MSHADOW_USE_CUDA
+#define MXNET_USE_OPENCL 0
+#elif !defined(MXNET_USE_CUDA)
+#define MXNET_USE_CUDA !MXNET_USE_OPENCL
+#elif !defined(MXNET_USE_OPENCL)
+#define MXNET_USE_OPENCL !MXNET_USE_CUDA
 #endif
 
+#if MXNET_USE_OPENCL
+#include <vexcl/vexcl.hpp>
+#endif
 /*!
  *\brief whether to use cudnn library for convolution
  */
@@ -38,7 +46,7 @@
 #define MXNET_USE_CUDNN MSHADOW_USE_CUDNN
 #endif
 
-/*! \brief Error message for using gpu when MXNET_USE_CUDA==0 */
+/*! \brief Error message for using gpu when MXNET_USE_CUDA==0 and MXNET_USE_OPENCL==0 */
 #define MXNET_GPU_NOT_ENABLED_ERROR  "GPU is not enabled"
 
 /*!
@@ -242,11 +250,14 @@ inline Context Context::Create(DeviceType dev_type, int32_t dev_id) {
   ctx.dev_type = dev_type;
   if (dev_id < 0) {
     ctx.dev_id = 0;
-#if MXNET_USE_CUDA
     if (dev_type != kCPU) {
+#if MXNET_USE_CUDA
       CHECK_EQ(cudaGetDevice(&ctx.dev_id), cudaSuccess);
-    }
+#elif MXNET_USE_OPENCL
+      vex::Context ctx(vex::Filter::GPU && vex::Filter::Position(dev_id));
+      CHECK(ctx);
 #endif
+    }
   } else {
     ctx.dev_id = dev_id;
   }

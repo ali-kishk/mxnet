@@ -37,6 +37,9 @@ class TBlob {
  public:
   /*! \brief pointer to the data */
   void *dptr_;
+#if MXNET_USE_OPENCL
+  cl::Buffer cl_buf_;
+#endif
   /*! \brief shape of the tensor */
   TShape shape_;
   /*!
@@ -54,7 +57,7 @@ class TBlob {
 #endif
   /*! \brief default constructor, default copy assign will work */
   TBlob(void)
-      : dptr_(NULL), dev_mask_(cpu::kDevMask),
+      : dptr_(nullptr), dev_mask_(cpu::kDevMask), stride_(0),
         type_flag_(mshadow::DataType<real_t>::kFlag) {
 #if MKL_EXPERIMENTAL == 1
       Mkl_mem_ = NULL;
@@ -64,7 +67,7 @@ class TBlob {
    * \brief constructor that construct TBlob from contiguous memory
    * \param dptr the pointer to the memory
    * \param shape the shape of the data
-   * \param dev_mask the device mask, can be cpu::kDevMask or gpu::kDevMask
+   * \param dev_mask the device mask, must be cpu::kDevMask
    */
   template<typename DType>
   TBlob(DType *dptr,
@@ -74,11 +77,14 @@ class TBlob {
         stride_(shape[shape.ndim() - 1]),
         dev_mask_(dev_mask),
         type_flag_(mshadow::DataType<DType>::kFlag) {
+#if MXNET_USE_OPENCL
+    CHECK(dev_mask_ == cpu::kDevMask)
+      << "TBlob(DType *) constructor only supports CPU memory";
+#endif
 #if MKL_EXPERIMENTAL == 1
       Mkl_mem_ = NULL;
 #endif
   }
-
   /*!
    * \brief constructor that construct TBlob from contiguous memory
    * \param dptr the pointer to the memory
@@ -94,10 +100,31 @@ class TBlob {
         stride_(shape[shape.ndim() - 1]),
         dev_mask_(dev_mask),
         type_flag_(type_flag) {
+#if MXNET_USE_OPENCL
+    CHECK(dev_mask_ == cpu::kDevMask)
+      << "TBlob(DType *) constructor only supports CPU memory";
+#endif
 #if MKL_EXPERIMENTAL == 1
       Mkl_mem_ = NULL;
 #endif
   }
+#if MXNET_USE_OPENCL
+  /*!
+   * \brief constructor that construct TBlob from cl::Buffer
+   * \param cl_buf
+   * \param shape the shape of the data
+   * \param dev_mask the device mask, can be cpu::kDevMask or gpu::kDevMask
+   * \param type_flag the type flag. Can be one of enum mshadow::dtype
+   */
+  TBlob(const cl::Buffer & cl_buf,
+        const TShape &shape,
+        int dev_mask,
+        int type_flag)
+      : dptr_(cl_buf()), cl_buf_(cl_buf), shape_(shape),
+        stride_(shape[shape.ndim() - 1]),
+        dev_mask_(dev_mask),
+        type_flag_(type_flag) {}
+#endif
   /*!
    * \brief constructor from tensor
    * \param src source tensor
@@ -108,9 +135,6 @@ class TBlob {
   template<typename Device, int dim, typename DType>
   TBlob(const mshadow::Tensor<Device, dim, DType> &src) {  // NOLINT(*)
     *this = src;
-#if MKL_EXPERIMENTAL == 1
-    Mkl_mem_ = NULL;
-#endif
   }
   /*!
    * \brief assignment from tensor
@@ -123,13 +147,48 @@ class TBlob {
   template<typename Device, int dim, typename DType>
   inline TBlob
   &operator=(const mshadow::Tensor<Device, dim, DType> &src) {
+#if MXNET_USE_OPENCL
+    CHECK(Device::kDevMask == cpu::kDevMask)
+      << "TBlob(Tensor) constructor only supports CPU device";
+#endif
     dptr_ = src.dptr_;
     shape_ = src.shape_;
     stride_ = src.stride_;
     dev_mask_ = Device::kDevMask;
     type_flag_ = mshadow::DataType<DType>::kFlag;
+#if MKL_EXPERIMENTAL == 1
+    Mkl_mem_ = NULL;
+#endif
     return *this;
   }
+#if MXNET_USE_OPENCL
+  /*!
+   * \brief construct form vex::vector
+   * \param src source vector
+   */
+  template<typename DType>
+  inline TBlob(const vex::vector<DType> &src) {
+    *this = src;
+  }
+  /*!
+   * \brief assignment from vex::vector
+   * \param src source vector
+   */
+  template<typename DType>
+  inline TBlob
+  &operator=(const vex::vector<DType> &src) {
+    dptr_ = src().raw();
+    cl_buf_ = src().raw_buffer();
+    shape_ = TShape({src.size()});
+    stride_ = src.size();
+    dev_mask_ = gpu::kDevMask;
+    type_flag_ = mshadow::DataType<DType>::kFlag;
+#if MKL_EXPERIMENTAL == 1
+    Mkl_mem_ = NULL;
+#endif
+    return *this;
+  }
+#endif
   /*!
    * \return whether the tensor's memory is continuous
    */
@@ -193,8 +252,20 @@ class TBlob {
   inline DType* dptr() const {
     CHECK(mshadow::DataType<DType>::kFlag == type_flag_)
       << "TBlob.dptr(): data type do not match specified type.";
+#if MXNET_USE_OPENCL
+    CHECK(dev_mask_ == cpu::kDevMask)
+    << "Tblob.dptr(): get DType pinter is only valid on CPU device";
+#endif
     return static_cast<DType*>(dptr_);
   }
+#if MXNET_USE_OPENCL
+  /*! \brief get cl::Buffer */
+  inline cl::Buffer& cl_buffer() {
+    CHECK(dev_mask_ == gpu::kDevMask)
+      << "Tblob.dptr(): get cl::Buffer is only valid on GPU device";
+    return cl_buf_;
+  }
+#endif
   /*!
    * \brief fetch the tensor, with respect to specific dimension
    * if dim do not match the stored dimension, an error will be issued
@@ -209,7 +280,7 @@ class TBlob {
     CHECK(Device::kDevMask == dev_mask_)
       << "TBlob.get: device type do not match specified type";
     CHECK(mshadow::DataType<DType>::kFlag == type_flag_)
-      << "TBlob.get_with_shape: data type do not match specified type."
+      << "TBlob.get: data type do not match specified type."
       << "Expected: " << type_flag_ << " v.s. given " << mshadow::DataType<DType>::kFlag;
 #if MKL_EXPERIMENTAL == 1
     if (Mkl_mem_ != nullptr) {
@@ -220,6 +291,20 @@ class TBlob {
                                                shape_.get<dim>(),
                                                stride_, stream);
   }
+#if MXNET_USE_OPENCL
+  /*!
+   * \brief fetch a vex::vector
+   */
+  template<typename DType>
+  inline vex::vector<DType> get(vex::backend::command_queue &q) const {
+    CHECK(dev_mask_ == gpu::kDevMask)
+      << "Tblob.get: vex::vector support is limited to GPU device";
+    CHECK(mshadow::DataType<DType>::kFlag == type_flag_)
+      << "TBlob.get: data type do not match specified type."
+      << "Expected: " << type_flag_ << " v.s. given " << mshadow::DataType<DType>::kFlag;
+    return vex::vector<DType>(q, vex::backend::device_vector<DType>(cl_buf_));
+  }
+#endif
   /*!
    * \brief fetch a tensor in given shape
    *  If size do not match the stored size, an error will be issued
