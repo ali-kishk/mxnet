@@ -38,12 +38,16 @@ class NaiveEngine final : public Engine {
     profiler->DumpProfile();
   }
 #endif
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA || MXNET_USE_OPENCL
     LOG(INFO) << "Engine shutdown";
     for (size_t i = 0; i < streams_.size(); ++i) {
       if (streams_[i] != nullptr) {
+#if MXNET_USE_CUDA
         // Catch exception for CUDA driver shutdown
         MSHADOW_CATCH_ERROR(mshadow::DeleteStream(streams_[i]));
+#else
+        delete streams_[i];
+#endif
         streams_[i] = nullptr;
       }
     }
@@ -136,18 +140,24 @@ class NaiveEngine final : public Engine {
     }
 #endif
     if (exec_ctx.dev_mask() == gpu::kDevMask) {
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA || MXNET_USE_OPENCL
       size_t dev_id = static_cast<size_t>(exec_ctx.dev_id);
+#if MXNET_USE_CUDA
       MSHADOW_CATCH_ERROR(mshadow::SetDevice<gpu>(exec_ctx.dev_id));
+#endif
       if (streams_.size() <= dev_id) {
         streams_.resize(dev_id + 1, nullptr);
       }
       if (streams_[dev_id] == nullptr) {
+#if MXNET_USE_CUDA
         streams_[dev_id] = mshadow::NewStream<gpu>(true, MXNET_USE_CUDNN != 0);
+#else
+        streams_[dev_id] = new vex::backend::command_queue(vex::Context(vex::Filter::GPU && vex::Filter::Position(dev_id)).queue(0));
+#endif
       }
       ctx_.stream = streams_[dev_id];
       exec_fun(ctx_, callback);
-#else
+#else //MXNET_USE_CUDA || MXNET_USE_OPENCL
       LOG(FATAL) << "GPU is not enabled";
 #endif
     } else {
@@ -194,7 +204,11 @@ class NaiveEngine final : public Engine {
   // CPU stream
   mshadow::Stream<cpu> cpu_stream_;
   // GPU streams
+#if MXNET_USE_CUDA
   std::vector<mshadow::Stream<gpu>*> streams_;
+#elif MXNET_USE_OPENCL
+  std::vector<vex::backend::command_queue*> streams_;
+#endif
 };  // class NaiveEngine
 
 

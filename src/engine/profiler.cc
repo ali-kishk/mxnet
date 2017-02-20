@@ -29,7 +29,7 @@ Profiler::Profiler()
   // TODO(ziheng) get device number during execution
   int kMaxNumCpus = 64;
   this->cpu_num_ = kMaxNumCpus;
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA || MXNET_USE_OPENCL
   int kMaxNumGpus = 32;
   this->gpu_num_ = kMaxNumGpus;
 #else

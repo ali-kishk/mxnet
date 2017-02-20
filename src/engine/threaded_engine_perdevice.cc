@@ -61,7 +61,7 @@ class ThreadedEnginePerDevice : public ThreadedEngine {
         #endif
       }
       RunContext run_ctx;
-      run_ctx.stream = nullptr;
+      run_ctx.stream = nullptr; //TODO: figure out why this is set to nullptr.
       this->ExecuteOprBlock(run_ctx, opr_block);
     } else {
       if (ctx.dev_mask() == cpu::kDevMask) {
@@ -144,10 +144,11 @@ class ThreadedEnginePerDevice : public ThreadedEngine {
   inline void GPUWorker(int dev_id,
                         bool is_copy_worker,
                         ThreadWorkerBlock<type> *block) {
-    #if MXNET_USE_CUDA
+#if MXNET_USE_CUDA || MXNET_USE_OPENCL
+    RunContext run_ctx;
+#if MXNET_USE_CUDA
     // allocate stream
     mshadow::SetDevice<gpu>(dev_id);
-    RunContext run_ctx;
     mshadow::Stream<gpu> *stream;
     if (is_copy_worker) {
       stream = mshadow::NewStream<gpu>(false, false);
@@ -155,15 +156,21 @@ class ThreadedEnginePerDevice : public ThreadedEngine {
       stream = mshadow::NewStream<gpu>(true, MXNET_USE_CUDNN != 0);
     }
     run_ctx.stream = stream;
+#else
+    vex::Context ctx(vex::Filter::GPU && vex::Filter::Position(dev_id));
+    run_ctx.stream = &ctx.queue(0);
+#endif
     // execute task
     OprBlock* opr_block;
     auto* task_queue = &(block->task_queue);
     while (task_queue->Pop(&opr_block)) {
       this->ExecuteOprBlock(run_ctx, opr_block);
     }
+#if MXNET_USE_CUDA
     // Catch exception for CUDA driver shutdown
     MSHADOW_CATCH_ERROR(mshadow::DeleteStream<gpu>(stream));
-    #endif
+#endif
+#endif
   }
   /*!
    * \brief CPU worker that performs operations on CPU.

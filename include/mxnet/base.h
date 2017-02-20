@@ -232,6 +232,11 @@ struct RunContext {
   inline mshadow::Stream<xpu>* get_stream() const {
     return static_cast<mshadow::Stream<xpu>*>(stream);
   }
+#if MXNET_USE_OPENCL
+  inline vex::backend::command_queue* get_context() const {
+    return static_cast<vex::backend::command_queue*>(stream);
+  }
+#endif
 };
 }  // namespace mxnet
 
