@@ -91,6 +91,27 @@ struct Resource {
       mshadow::Shape<ndim> shape, mshadow::Stream<xpu> *stream) const {
     return get_space_typed<xpu, ndim, real_t>(shape, stream);
   }
+#if MXNET_USE_OPENCL
+  /*!
+   * \brief Get space requested as VexCL vector.
+   *  The caller can request arbitrary size.
+   *
+   *  This space can be shared with other calls to this->get_space.
+   *  So the caller need to serialize the calls when using the conflicted space.
+   *  The old space can get freed, however, this will incur a synchronization,
+   *  when running on device, so the launched kernels that depend on the temp space
+   *  can finish correctly.
+   *
+   * \param q the command_queue of returning vector.
+   * \return the vector requested.
+   * \tparam ndim the number of dimension of the tensor requested.
+   */
+  template<typename xpu, int ndim>
+  inline vex::vector<real_t> get_space(
+      mshadow::Shape<ndim> shape, vex::backend::command_queue &q) const {
+    return get_space_typed<real_t>(shape, q);
+  }
+#endif
   /*!
    * \brief Get cpu space requested as mshadow Tensor.
    *  The caller can request arbitrary size.
@@ -122,6 +143,23 @@ struct Resource {
         reinterpret_cast<DType*>(get_space_internal(shape.Size() * sizeof(DType))),
         shape, shape[ndim - 1], stream);
   }
+#if MXNET_USE_OPENCL
+  /*!
+   * \brief Get space requested as VexCL vector in specified type.
+   *  The caller can request arbitrary size.
+   *
+   * \param q the command_queue of returning vector.
+   * \return the vector requested.
+   * \tparam ndim the number of dimension of the tensor requested.
+   */
+  template<int ndim, typename DType>
+  inline vex::vector<DType> get_space_typed(
+      mshadow::Shape<ndim> shape, vex::backend::command_queue &q) const {
+    CHECK_EQ(req.type, ResourceRequest::kTempSpace);
+    return vex::vector<DType>(
+        q, vex::backend::device_vector<DType>(*reinterpret_cast<cl::Buffer*>(get_space_internal(shape.Size() * sizeof(DType)))));
+  }
+#endif
   /*!
    * \brief Get CPU space as mshadow Tensor in specified type.
    * The caller can request arbitrary size.

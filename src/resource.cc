@@ -17,6 +17,75 @@
 namespace mxnet {
 namespace resource {
 
+// A workaround to get a unified Random interface
+template <typename Device, typename DType=float>
+struct RandomType {
+  typedef mshadow::Random<Device, DType> type;
+};
+#if MXNET_USE_OPENCL
+template<typename DType>
+struct RandomType<gpu, DType> {
+  typedef class RandomCL {
+  public:
+  /*!
+  * \brief constructor of random engine
+  * \param seed random number seed
+  */
+  explicit RandomCL(int seed) {
+    this->Seed(seed);
+  }
+  ~RandomCL(void) {
+  }
+  /*!
+  * \brief seed random number generator using this seed
+  * \param seed seed of prng
+  */
+  inline void Seed(int seed) {
+    this->rseed_ = static_cast<cl_ulong>(seed);
+  }
+  /*!
+  * \brief get random seed used in random generator
+  * \return seed in unsigned
+  */
+  inline unsigned GetSeed() const {
+    return rseed_;
+  }
+  /*!
+  * \brief generate data from uniform [a,b)
+  * \param dst destination
+  * \param a lower bound of uniform
+  * \param b upper bound of uniform
+  * \tparam dim dimension of tensor
+  */
+  inline void SampleUniform(vex::vector<DType> *dst,
+                            DType a = 0.0f, DType b = 1.0f) {
+    *dst = rnd_uniform_(vex::element_index(), rseed_) * (b-a) + a;
+  }
+  /*!
+  * \brief generate data from standard gaussian
+  * \param dst destination
+  * \param mu mean variable
+  * \param sigma standard deviation
+  * \tparam dim dimension of tensor
+  */
+  inline void SampleGaussian(vex::vector<DType> *dst,
+                             DType mu = 0.0f, DType sigma = 1.0f) {
+    if (sigma <= 0.0f) {
+      *dst = mu;
+    } else {
+      *dst = rnd_normal_(vex::element_index(), rseed_) * sigma + mu;
+    }
+  }
+  private:
+    cl_ulong rseed_;
+    vex::Random<DType> rnd_uniform_;
+    vex::RandomNormal<DType> rnd_normal_;
+  } type;
+};
+#endif
+template<typename Device, typename DType=float>
+using Random = typename RandomType<Device, DType>::type;
+
 // internal structure for space allocator
 struct SpaceAllocator {
   // internal context
@@ -77,10 +146,10 @@ class ResourceManagerImpl : public ResourceManager {
         Context::CPU(), cpu_temp_space_copy_));
   }
   ~ResourceManagerImpl() {
-    // need explicit delete, before engine get killed
+    // need explicit delete, before type get killed
     cpu_rand_.reset(nullptr);
     cpu_space_.reset(nullptr);
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA || MXNET_USE_OPENCL
     gpu_rand_.Clear();
     gpu_space_.Clear();
 #endif
@@ -102,7 +171,7 @@ class ResourceManagerImpl : public ResourceManager {
       }
     } else {
       CHECK_EQ(ctx.dev_mask(), gpu::kDevMask);
-#if MSHADOW_USE_CUDA
+#if MSHADOW_USE_CUDA || MXNET_USE_OPENCL
       switch (req.type) {
         case ResourceRequest::kRandom: {
           return gpu_rand_.Get(ctx.dev_id, [ctx, this]() {
@@ -127,7 +196,7 @@ class ResourceManagerImpl : public ResourceManager {
   void SeedRandom(uint32_t seed) override {
     global_seed_ = seed;
     cpu_rand_->Seed(global_seed_);
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA || MXNET_USE_OPENCL
     gpu_rand_.ForEach([seed](size_t i, ResourceRandom<gpu> *p) {
         p->Seed(seed);
       });
@@ -145,20 +214,22 @@ class ResourceManagerImpl : public ResourceManager {
     /*! \brief the context of the PRNG */
     Context ctx;
     /*! \brief pointer to PRNG */
-    mshadow::Random<xpu> *prnd;
+    Random<xpu> *prnd;
     /*! \brief resource representation */
     Resource resource;
     /*! \brief constructor */
     explicit ResourceRandom(Context ctx, uint32_t global_seed)
         : ctx(ctx) {
+#if MXNET_USE_CUDA
       mshadow::SetDevice<xpu>(ctx.dev_id);
+#endif
       resource.var = Engine::Get()->NewVariable();
-      prnd = new mshadow::Random<xpu>(ctx.dev_id + global_seed * kRandMagic);
+      prnd = new Random<xpu>(ctx.dev_id + global_seed * kRandMagic);
       resource.ptr_ = prnd;
       resource.req = ResourceRequest(ResourceRequest::kRandom);
     }
     ~ResourceRandom() {
-      mshadow::Random<xpu> *r = prnd;
+      Random<xpu> *r = prnd;
       Engine::Get()->DeleteVariable(
           [r](RunContext rctx) {
             MSHADOW_CATCH_ERROR(delete r);
@@ -167,9 +238,11 @@ class ResourceManagerImpl : public ResourceManager {
     // set seed to a PRNG
     inline void Seed(uint32_t global_seed) {
       uint32_t seed = ctx.dev_id + global_seed * kRandMagic;
-      mshadow::Random<xpu> *r = prnd;
+      Random<xpu> *r = prnd;
       Engine::Get()->PushSync([r, seed](RunContext rctx) {
+#if MXNET_USE_CUDA
           r->set_stream(rctx.get_stream<xpu>());
+#endif
           r->Seed(seed);
         }, ctx, {}, {resource.var},
         FnProperty::kNormal, 0, PROFILER_MESSAGE("ResourceRandomSetSeed"));
@@ -224,7 +297,7 @@ class ResourceManagerImpl : public ResourceManager {
   int cpu_temp_space_copy_;
   /*! \brief number of copies in GPU temp space */
   int gpu_temp_space_copy_;
-  /*! \brief Reference to the engine */
+  /*! \brief Reference to the type */
   std::shared_ptr<Engine> engine_ref_;
   /*! \brief Reference to the storage */
   std::shared_ptr<Storage> storage_ref_;
@@ -234,7 +307,7 @@ class ResourceManagerImpl : public ResourceManager {
   std::unique_ptr<ResourceRandom<cpu> > cpu_rand_;
   /*! \brief CPU temp space resources */
   std::unique_ptr<ResourceTempSpace> cpu_space_;
-#if MXNET_USE_CUDA
+#if MXNET_USE_CUDA || MXNET_USE_OPENCL
   /*! \brief random number generator for GPU */
   common::LazyAllocArray<ResourceRandom<gpu> > gpu_rand_;
   /*! \brief temp space for GPU */
