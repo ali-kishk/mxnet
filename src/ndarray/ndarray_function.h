@@ -27,19 +27,83 @@ struct BinaryBase {
 // operators
 struct Plus : public BinaryBase {
   typedef mshadow::op::plus mshadow_op;
+#if MXNET_USE_OPENCL
+  template<typename T, typename TLhs, typename TRhs>
+  static inline void vexcl_op(const TLhs &a, const TRhs &b, vex::vector<T> &out) {
+    out = a + b;
+  }
 };
+template<>
+inline void Plus::vexcl_op(const mshadow::half::half_t &a, const vex::vector<mshadow::half::half_t> &b, vex::vector<mshadow::half::half_t> &out) {
+  out = cl_half(a.half_) + b;
+}
+template<>
+inline void Plus::vexcl_op(const vex::vector<mshadow::half::half_t> &a, const mshadow::half::half_t &b, vex::vector<mshadow::half::half_t> &out) {
+  out = a + cl_half(b.half_);
+}
+#else
+};
+#endif
 
 struct Minus : public BinaryBase {
   typedef mshadow::op::minus mshadow_op;
+#if MXNET_USE_OPENCL
+  template<typename T, typename TLhs, typename TRhs>
+  static inline void vexcl_op(const TLhs &a, const TRhs &b, vex::vector<T> &out) {
+    out = a - b;
+  }
 };
+template<>
+inline void Minus::vexcl_op(const mshadow::half::half_t &a, const vex::vector<mshadow::half::half_t> &b, vex::vector<mshadow::half::half_t> &out) {
+  out = cl_half(a.half_) - b;
+}
+template<>
+inline void Minus::vexcl_op(const vex::vector<mshadow::half::half_t> &a, const mshadow::half::half_t &b, vex::vector<mshadow::half::half_t> &out) {
+  out = a - cl_half(b.half_);
+}
+#else
+};
+#endif
 
 struct Mul : public BinaryBase {
   typedef mshadow::op::mul mshadow_op;
+#if MXNET_USE_OPENCL
+  template<typename T, typename TLhs, typename TRhs>
+  static inline void vexcl_op(const TLhs &a, const TRhs &b, vex::vector<T> &out) {
+    out = a * b;
+  }
 };
+template<>
+inline void Mul::vexcl_op(const mshadow::half::half_t &a, const vex::vector<mshadow::half::half_t> &b, vex::vector<mshadow::half::half_t> &out) {
+  out = cl_half(a.half_) * b;
+}
+template<>
+inline void Mul::vexcl_op(const vex::vector<mshadow::half::half_t> &a, const mshadow::half::half_t &b, vex::vector<mshadow::half::half_t> &out) {
+  out = a * cl_half(b.half_);
+}
+#else
+};
+#endif
 
 struct Div : public BinaryBase {
   typedef mshadow::op::div mshadow_op;
+#if MXNET_USE_OPENCL
+  template<typename T, typename TLhs, typename TRhs>
+  static inline void vexcl_op(const TLhs &a, const TRhs &b, vex::vector<T> &out) {
+    out = a / b;
+  }
 };
+template<>
+inline void Div::vexcl_op(const mshadow::half::half_t &a, const vex::vector<mshadow::half::half_t> &b, vex::vector<mshadow::half::half_t> &out) {
+  out = cl_half(a.half_) / b;
+}
+template<>
+inline void Div::vexcl_op(const vex::vector<mshadow::half::half_t> &a, const mshadow::half::half_t &b, vex::vector<mshadow::half::half_t> &out) {
+  out = a / cl_half(b.half_);
+}
+#else
+};
+#endif
 
 struct ClipMin : public BinaryBase {
   struct mshadow_op {

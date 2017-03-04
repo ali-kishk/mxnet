@@ -152,7 +152,8 @@ class NaiveEngine final : public Engine {
 #if MXNET_USE_CUDA
         streams_[dev_id] = mshadow::NewStream<gpu>(true, MXNET_USE_CUDNN != 0);
 #else
-        streams_[dev_id] = new vex::backend::command_queue(vex::Context(vex::Filter::GPU && vex::Filter::Position(dev_id)).queue(0));
+
+        streams_[dev_id] = new vex::backend::command_queue(cl::Context::getDefault(), vex::backend::device_list(vex::Filter::Position(dev_id))[0]);
 #endif
       }
       ctx_.stream = streams_[dev_id];

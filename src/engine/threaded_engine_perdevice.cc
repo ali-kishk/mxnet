@@ -157,8 +157,7 @@ class ThreadedEnginePerDevice : public ThreadedEngine {
     }
     run_ctx.stream = stream;
 #else
-    vex::Context ctx(vex::Filter::GPU && vex::Filter::Position(dev_id));
-    run_ctx.stream = &ctx.queue(0);
+    run_ctx.stream = new vex::backend::command_queue(cl::Context::getDefault(), vex::backend::device_list(vex::Filter::Position(dev_id))[0]);
 #endif
     // execute task
     OprBlock* opr_block;
@@ -169,6 +168,8 @@ class ThreadedEnginePerDevice : public ThreadedEngine {
 #if MXNET_USE_CUDA
     // Catch exception for CUDA driver shutdown
     MSHADOW_CATCH_ERROR(mshadow::DeleteStream<gpu>(stream));
+#else
+    delete (vex::backend::command_queue*)run_ctx.stream;
 #endif
 #endif
   }

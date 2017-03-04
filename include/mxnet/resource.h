@@ -35,6 +35,75 @@ struct ResourceRequest {
       : type(type) {}
 };
 
+// A workaround to get a unified Random interface
+template <typename Device, typename DType=float>
+struct RandomType {
+  typedef mshadow::Random<Device, DType> type;
+};
+#if MXNET_USE_OPENCL
+template<typename DType>
+struct RandomType<gpu, DType> {
+  typedef class RandomCL {
+  public:
+  /*!
+  * \brief constructor of random engine
+  * \param seed random number seed
+  */
+  explicit RandomCL(int seed) {
+    this->Seed(seed);
+  }
+  ~RandomCL(void) {
+  }
+  /*!
+  * \brief seed random number generator using this seed
+  * \param seed seed of prng
+  */
+  inline void Seed(int seed) {
+    this->rseed_ = static_cast<cl_ulong>(seed);
+  }
+  /*!
+  * \brief get random seed used in random generator
+  * \return seed in unsigned
+  */
+  inline unsigned GetSeed() const {
+    return rseed_;
+  }
+  /*!
+  * \brief generate data from uniform [a,b)
+  * \param dst destination
+  * \param a lower bound of uniform
+  * \param b upper bound of uniform
+  * \tparam dim dimension of tensor
+  */
+  inline void SampleUniform(vex::vector<DType> *dst,
+                            DType a = 0.0f, DType b = 1.0f) {
+    DType r = b-a;
+    *dst = rnd_uniform_(vex::element_index(), rseed_) * r + a;
+  }
+  /*!
+  * \brief generate data from standard gaussian
+  * \param dst destination
+  * \param mu mean variable
+  * \param sigma standard deviation
+  * \tparam dim dimension of tensor
+  */
+  inline void SampleGaussian(vex::vector<DType> *dst,
+                             DType mu = 0.0f, DType sigma = 1.0f) {
+    if (sigma <= 0.0f) {
+      *dst = mu;
+    } else {
+      *dst = rnd_normal_(vex::element_index(), rseed_) * sigma + mu;
+    }
+  }
+  private:
+    cl_ulong rseed_;
+    vex::Random<DType> rnd_uniform_;
+    vex::RandomNormal<DType> rnd_normal_;
+  } type;
+};
+#endif
+template<typename Device, typename DType=float>
+using Random = typename RandomType<Device, DType>::type;
 
 /*!
  * \brief Resources used by mxnet operations.
@@ -62,11 +131,10 @@ struct Resource {
    * \tparam xpu the device type of random number generator.
    */
   template<typename xpu, typename DType>
-  inline mshadow::Random<xpu, DType>* get_random(
+  inline Random<xpu, DType>* get_random(
       mshadow::Stream<xpu> *stream) const {
     CHECK_EQ(req.type, ResourceRequest::kRandom);
-    mshadow::Random<xpu, DType> *ret =
-        static_cast<mshadow::Random<xpu, DType>*>(ptr_);
+    Random<xpu, DType> *ret = static_cast<Random<xpu, DType>*>(ptr_);
     ret->set_stream(stream);
     return ret;
   }

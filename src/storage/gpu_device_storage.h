@@ -41,7 +41,7 @@ inline void* GPUDeviceStorage::Alloc(size_t size) {
   if (e != cudaSuccess && e != cudaErrorCudartUnloading)
     throw std::bad_alloc();
 #elif MXNET_USE_OPENCL
-  ret = new cl::Buffer(vex::current_context().context(0), CL_MEM_READ_WRITE, size);
+  ret = new cl::Buffer(cl::Context::getDefault(), CL_MEM_READ_WRITE, size);
 #else   // MXNET_USE_CUDA
   LOG(FATAL) << "Please compile with CUDA or OpenCL enabled";
 #endif  // MXNET_USE_CUDA

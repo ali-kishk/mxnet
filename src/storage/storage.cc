@@ -34,9 +34,6 @@ class StorageImpl : public Storage {
       case Context::kCPU: break;
       case Context::kGPU:
 #if MXNET_USE_OPENCL
-        {
-          vex::Context ctx_(vex::Filter::GPU && vex::Filter::Position(ctx.dev_id));
-        }
         break;
 #endif
       case Context::kCPUPinned:

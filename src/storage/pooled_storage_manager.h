@@ -72,11 +72,11 @@ void* GPUPooledStorageManager::Alloc(size_t size) {
 #elif MXNET_USE_OPENCL
     try {
       try {
-        ret = new cl::Buffer(vex::current_context().context(0), CL_MEM_READ_WRITE, size);
+        ret = new cl::Buffer(cl::Context::getDefault(), CL_MEM_READ_WRITE, size);
       } catch (cl::Error& e) {
         if (e.err() == CL_MEM_OBJECT_ALLOCATION_FAILURE) {
           ReleaseAll();
-          ret = new cl::Buffer(vex::current_context().context(0), CL_MEM_READ_WRITE, size);
+          ret = new cl::Buffer(cl::Context::getDefault(), CL_MEM_READ_WRITE, size);
         } else {
           LOG(FATAL) << "clCreateBuffer failed: " << e.what();
         }

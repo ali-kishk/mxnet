@@ -233,7 +233,7 @@ struct RunContext {
     return static_cast<mshadow::Stream<xpu>*>(stream);
   }
 #if MXNET_USE_OPENCL
-  inline vex::backend::command_queue* get_context() const {
+  inline vex::backend::command_queue* get_queue() const {
     return static_cast<vex::backend::command_queue*>(stream);
   }
 #endif
@@ -259,8 +259,8 @@ inline Context Context::Create(DeviceType dev_type, int32_t dev_id) {
 #if MXNET_USE_CUDA
       CHECK_EQ(cudaGetDevice(&ctx.dev_id), cudaSuccess);
 #elif MXNET_USE_OPENCL
-      vex::Context ctx(vex::Filter::GPU && vex::Filter::Position(dev_id));
-      CHECK(ctx);
+      auto&& devices = vex::backend::device_list(vex::Filter::Position(dev_id));
+      CHECK(!devices.empty()) << "Cannot find device " << dev_id;
 #endif
     }
   } else {
@@ -319,6 +319,16 @@ inline std::ostream& operator<<(std::ostream &out, const Context &ctx) {
   return out;
 }
 }  // namespace mxnet
+
+#if MXNET_USE_OPENCL
+// A patch for half precision type
+namespace vex {
+template<> struct type_name_impl<mshadow::half::half_t> {
+    static std::string get() { return "half"; }
+};
+template<> struct is_cl_native<mshadow::half::half_t> : std::true_type { };
+}
+#endif
 
 #include "./tensor_blob.h"
 //! \endcond

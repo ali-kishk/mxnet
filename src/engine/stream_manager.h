@@ -67,7 +67,7 @@ RunContext StreamManager<kNumGpus, kStreams>::GetRunContext(
 #if MXNET_USE_CUDA
             i = mshadow::NewStream<gpu>(true, MXNET_USE_CUDNN != 0);
 #elif MXNET_USE_OPENCL
-            i = new vex::backend::command_queue(vex::Context(vex::Filter::GPU && vex::Filter::Position(ctx.dev_id)).queue(0));
+            i = new vex::backend::command_queue(cl::Context::getDefault(), vex::backend::device_list(vex::Filter::Position(ctx.dev_id))[0]);
 #endif
           }
           counter = 0;
@@ -103,7 +103,7 @@ RunContext StreamManager<kNumGpus, kStreams>::GetIORunContext(
 #if MXNET_USE_CUDA
           gpu_io_streams_.at(ctx.dev_id) = mshadow::NewStream<gpu>(false, false);
 #elif MXNET_USE_OPENCL
-          gpu_io_streams_.at(ctx.dev_id) = new vex::backend::command_queue(vex::Context(vex::Filter::GPU && vex::Filter::Position(ctx.dev_id)).queue(0));
+          gpu_io_streams_.at(ctx.dev_id) = new vex::backend::command_queue(cl::Context::getDefault(), vex::backend::device_list(vex::Filter::Position(ctx.dev_id))[0]);
 #endif
         }
       }

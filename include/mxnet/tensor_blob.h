@@ -265,6 +265,11 @@ class TBlob {
       << "Tblob.dptr(): get cl::Buffer is only valid on GPU device";
     return cl_buf_;
   }
+  inline const cl::Buffer& cl_buffer() const {
+    CHECK(dev_mask_ == gpu::kDevMask)
+      << "Tblob.dptr(): get cl::Buffer is only valid on GPU device";
+    return cl_buf_;
+  }
 #endif
   /*!
    * \brief fetch the tensor, with respect to specific dimension
