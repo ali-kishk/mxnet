@@ -57,8 +57,6 @@ void Copy<gpu, gpu>(const TBlob &from, TBlob *to,
                     RunContext ctx) {
   CHECK_EQ(to->type_flag_, from.type_flag_)
     << "Source and target must have the same data type when copying across devices.";
-  CHECK_EQ(from_ctx.dev_id, to_ctx.dev_id)
-    << "Cross device copy has not been implemented yet.";
   vex::backend::command_queue *q = ctx.get_queue();
   q->enqueueCopyBuffer(from.cl_buffer(), to->cl_buffer(), 0, 0, from.Size());
 }
