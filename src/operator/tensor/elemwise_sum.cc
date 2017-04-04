@@ -40,20 +40,27 @@ bool ElementWiseSumShape(const nnvm::NodeAttrs& attrs,
                          std::vector<TShape> *in_attrs,
                          std::vector<TShape> *out_attrs) {
   CHECK_EQ(out_attrs->size(), 1);
-  return ElemwiseAttr<TShape, shape_is_none, true>(
-      attrs, in_attrs, out_attrs);
+  return ElemwiseAttr<TShape, shape_is_none, shape_assign, true>(
+    attrs, in_attrs, out_attrs, TShape());
 }
 
 bool ElementWiseSumType(const nnvm::NodeAttrs& attrs,
                         std::vector<int> *in_attrs,
                         std::vector<int> *out_attrs) {
   CHECK_EQ(out_attrs->size(), 1);
-  return ElemwiseAttr<int, type_is_none, true>(
-      attrs, in_attrs, out_attrs);
+  return ElemwiseAttr<int, type_is_none, type_assign, true>(
+    attrs, in_attrs, out_attrs, -1);
 }
 
-NNVM_REGISTER_OP(ElementWiseSum)
-.MXNET_DESCRIBE("Perform element sum of inputs")
+NNVM_REGISTER_OP(add_n)
+.add_alias("ElementWiseSum")
+.describe(R"doc(Add all input arguments element-wise.
+
+.. math::
+   add\_n(a_1, a_2, ..., a_n) = a_1 + a_2 + ... + a_n
+
+``add_n`` is potentially more efficient than calling ``add`` by `n` times.
+)doc" ADD_FILELINE)
 .set_attr_parser(ParamParser<ElementWiseSumParam>)
 .set_num_inputs([](const nnvm::NodeAttrs& attrs) {
     uint32_t ret = dmlc::get<ElementWiseSumParam>(attrs.parsed).num_args;
@@ -77,7 +84,7 @@ NNVM_REGISTER_OP(ElementWiseSum)
 .set_attr<nnvm::FInferShape>("FInferShape", ElementWiseSumShape)
 .set_attr<nnvm::FInferType>("FInferType", ElementWiseSumType)
 .set_attr<nnvm::FGradient>("FGradient", ElementWiseSumGrad)
-.add_argument("args", "NDArray[]", "List of input tensors");
+.add_argument("args", "ndarray-or-symbol[]", "Positional input arguments");
 
 
 

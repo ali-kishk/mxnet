@@ -28,11 +28,19 @@ endif
 
 # use customized config file
 include $(config)
+
+ifeq ($(USE_MKL2017), 1)
+# must run ./prepare_mkl before including mshadow.mk
+	RETURN_STRING = $(shell ./prepare_mkl.sh $(MKLML_ROOT))
+	MKLROOT = $(firstword $(RETURN_STRING))
+	export USE_MKLML = $(lastword $(RETURN_STRING))
+endif
+
 include mshadow/make/mshadow.mk
 include $(DMLC_CORE)/make/dmlc.mk
 
 # all tge possible warning tread
-WARNFLAGS= -Wall -Wno-deprecated-declarations
+WARNFLAGS= -Wall -Wsign-compare -Wno-deprecated-declarations
 CFLAGS = -DMSHADOW_FORCE_STREAM $(WARNFLAGS)
 
 ifeq ($(DEV), 1)
@@ -58,6 +66,11 @@ ifeq ($(USE_PROFILER), 1)
 	CFLAGS += -DMXNET_USE_PROFILER=1
 endif
 
+# Caffe Plugin
+ifdef CAFFE_PATH
+  CFLAGS += -DMXNET_USE_CAFFE=1
+endif
+
 ifndef LINT_LANG
 	LINT_LANG="all"
 endif
@@ -65,7 +78,7 @@ endif
 # setup opencv
 ifeq ($(USE_OPENCV), 1)
 	CFLAGS += -DMXNET_USE_OPENCV=1 $(shell pkg-config --cflags opencv)
-	LDFLAGS += $(shell pkg-config --libs opencv)
+	LDFLAGS += $(filter-out -lopencv_ts, $(shell pkg-config --libs opencv))
 	BIN += bin/im2rec
 else
 	CFLAGS+= -DMXNET_USE_OPENCV=0
@@ -84,22 +97,12 @@ ifeq ($(USE_MKL2017), 1)
 	CFLAGS += -DMXNET_USE_MKL2017=1
 	CFLAGS += -DUSE_MKL=1
 	CFLAGS += -I$(ROOTDIR)/src/operator/mkl/
+	CFLAGS += -I$(MKLML_ROOT)/include
+	LDFLAGS += -L$(MKLML_ROOT)/lib
 ifeq ($(USE_MKL2017_EXPERIMENTAL), 1)
 	CFLAGS += -DMKL_EXPERIMENTAL=1
 else
 	CFLAGS += -DMKL_EXPERIMENTAL=0
-endif
-ifneq ($(USE_BLAS), mkl)
-	ICC_ON=0
-	RETURN_STRING=$(shell ./prepare_mkl.sh $(ICC_ON) $(MKLML_ROOT))
-	MKLROOT=$(firstword $(RETURN_STRING))
-	MKL_LDFLAGS=-l$(word 2, $(RETURN_STRING))
-	MKL_EXTERNAL=$(lastword $(RETURN_STRING))
-ifeq ($(MKL_EXTERNAL), 1)
-	MKL_LDFLAGS+=-Wl,-rpath,$(MKLROOT)/lib
-	CFLAGS += -I$(MKLROOT)/include
-	LDFLAGS += -Wl,--as-needed -L$(MKLROOT)/lib/ -liomp5 -lmklml_intel
-endif
 endif
 endif
 
@@ -107,6 +110,8 @@ ifeq ($(USE_CUDNN), 1)
 	CFLAGS += -DMSHADOW_USE_CUDNN=1
 	LDFLAGS += -lcudnn
 endif
+
+
 
 ifeq ($(USE_THREADED_ENGINE), 1)
 	CFLAGS += -DMXNET_USE_THREADED_ENGINE
@@ -134,10 +139,10 @@ ifeq ($(USE_DIST_KVSTORE), 1)
 	LDFLAGS += $(PS_LDFLAGS_A)
 endif
 
-.PHONY: clean all test lint doc clean_all rcpplint rcppexport roxygen\
+.PHONY: clean all extra-packages test lint doc clean_all rcpplint rcppexport roxygen\
 	cython2 cython3 cython cyclean
 
-all: lib/libmxnet.a lib/libmxnet.so $(BIN)
+all: lib/libmxnet.a lib/libmxnet.so $(BIN) extra-packages
 
 SRC = $(wildcard src/*/*/*.cc src/*/*.cc src/*.cc)
 OBJ = $(patsubst %.cc, build/%.o, $(SRC))
@@ -184,8 +189,9 @@ LIB_DEP += $(DMLC_CORE)/libdmlc.a $(NNVM_PATH)/lib/libnnvm.a
 ALL_DEP = $(OBJ) $(EXTRA_OBJ) $(PLUGIN_OBJ) $(LIB_DEP)
 
 ifeq ($(USE_CUDA), 1)
+	CFLAGS += -I$(ROOTDIR)/cub
 	ALL_DEP += $(CUOBJ) $(EXTRA_CUOBJ) $(PLUGIN_CUOBJ)
-	LDFLAGS += -lcuda
+	LDFLAGS += -lcuda -lcufft
 	SCALA_PKG_PROFILE := $(SCALA_PKG_PROFILE)-gpu
 else
 	SCALA_PKG_PROFILE := $(SCALA_PKG_PROFILE)-cpu
@@ -249,12 +255,12 @@ PSLITE:
 $(DMLC_CORE)/libdmlc.a: DMLCCORE
 
 DMLCCORE:
-	+ cd $(DMLC_CORE); make libdmlc.a USE_SSE=$(USE_SSE) config=$(ROOTDIR)/$(config); cd $(ROOTDIR)
+	+ cd $(DMLC_CORE); $(MAKE) libdmlc.a USE_SSE=$(USE_SSE) config=$(ROOTDIR)/$(config); cd $(ROOTDIR)
 
 $(NNVM_PATH)/lib/libnnvm.a: LIBNNVM
 
 LIBNNVM:
-	+ cd $(NNVM_PATH); make lib/libnnvm.a; cd $(ROOTDIR)
+	+ cd $(NNVM_PATH); $(MAKE) lib/libnnvm.a DMLC_CORE_PATH=$(DMLC_CORE); cd $(ROOTDIR)
 
 bin/im2rec: tools/im2rec.cc $(ALLX_DEP)
 
@@ -262,12 +268,25 @@ $(BIN) :
 	@mkdir -p $(@D)
 	$(CXX) $(CFLAGS) -std=c++11  -o $@ $(filter %.cpp %.o %.c %.a %.cc, $^) $(LDFLAGS)
 
+# CPP Package
+ifeq ($(USE_CPP_PACKAGE), 1)
+include cpp-package/cpp-package.mk
+endif
+
 include tests/cpp/unittest.mk
+
+extra-packages: $(EXTRA_PACKAGES)
 
 test: $(TEST)
 
-lint: rcpplint jnilint
-	python2 dmlc-core/scripts/lint.py mxnet ${LINT_LANG} include src plugin scripts python predict/python
+lint: cpplint rcpplint jnilint pylint
+
+cpplint:
+	python2 dmlc-core/scripts/lint.py mxnet cpp include src plugin cpp-package
+
+pylint:
+# ideally we want to check all, such as: python tools example tests
+	pylint python/mxnet --rcfile=$(ROOTDIR)/tests/ci_build/pylintrc
 
 doc: doxygen
 
@@ -304,6 +323,7 @@ rpkg:
 	R CMD INSTALL R-package
 	Rscript -e "require(mxnet); mxnet:::mxnet.export(\"R-package\")"
 	rm -rf R-package/NAMESPACE
+	Rscript -e "require(devtools); install_version(\"roxygen2\", version = \"5.0.1\", repos = \"https://cloud.r-project.org/\")"
 	Rscript -e "require(roxygen2); roxygen2::roxygenise(\"R-package\")"
 	R CMD build --no-build-vignettes R-package
 	rm -rf mxnet_current_r.tar.gz
@@ -313,45 +333,46 @@ scalapkg:
 	(cd $(ROOTDIR)/scala-package; \
 		mvn clean package -P$(SCALA_PKG_PROFILE) -Dcxx="$(CXX)" \
 			-Dcflags="$(CFLAGS)" -Dldflags="$(LDFLAGS)" \
-			-Dlddeps="$(LIB_DEP)")
+			-Dcurrent_libdir="$(ROOTDIR)/lib" \
+			-Dlddeps="$(LIB_DEP) $(ROOTDIR)/lib/libmxnet.a")
 
 scalatest:
 	(cd $(ROOTDIR)/scala-package; \
 		mvn verify -P$(SCALA_PKG_PROFILE) -Dcxx="$(CXX)" \
 			-Dcflags="$(CFLAGS)" -Dldflags="$(LDFLAGS)" \
-			-Dlddeps="$(LIB_DEP)" $(SCALA_TEST_ARGS))
+			-Dlddeps="$(LIB_DEP) $(ROOTDIR)/lib/libmxnet.a" $(SCALA_TEST_ARGS))
 
 scalainstall:
 	(cd $(ROOTDIR)/scala-package; \
 		mvn install -P$(SCALA_PKG_PROFILE) -DskipTests -Dcxx="$(CXX)" \
 			-Dcflags="$(CFLAGS)" -Dldflags="$(LDFLAGS)" \
-			-Dlddeps="$(LIB_DEP)")
+			-Dlddeps="$(LIB_DEP) $(ROOTDIR)/lib/libmxnet.a")
 
 scaladeploy:
 	(cd $(ROOTDIR)/scala-package; \
 		mvn deploy -Prelease,$(SCALA_PKG_PROFILE) -DskipTests -Dcxx="$(CXX)" \
 			-Dcflags="$(CFLAGS)" -Dldflags="$(LDFLAGS)" \
-			-Dlddeps="$(LIB_DEP)")
+			-Dlddeps="$(LIB_DEP) $(ROOTDIR)/lib/libmxnet.a")
 
 jnilint:
 	python2 dmlc-core/scripts/lint.py mxnet-jnicpp cpp scala-package/native/src
 
 ifneq ($(EXTRA_OPERATORS),)
-clean: cyclean
+clean: cyclean $(EXTRA_PACKAGES_CLEAN)
 	$(RM) -r build lib bin *~ */*~ */*/*~ */*/*/*~ R-package/NAMESPACE R-package/man R-package/R/mxnet_generated.R \
 		R-package/inst R-package/src/*.o R-package/src/*.so mxnet_*.tar.gz
-	cd $(DMLC_CORE); make clean; cd -
-	cd $(PS_PATH); make clean; cd -
-	cd $(NNVM_PATH); make clean; cd -
+	cd $(DMLC_CORE); $(MAKE) clean; cd -
+	cd $(PS_PATH); $(MAKE) clean; cd -
+	cd $(NNVM_PATH); $(MAKE) clean; cd -
 	$(RM) -r  $(patsubst %, %/*.d, $(EXTRA_OPERATORS)) $(patsubst %, %/*/*.d, $(EXTRA_OPERATORS))
 	$(RM) -r  $(patsubst %, %/*.o, $(EXTRA_OPERATORS)) $(patsubst %, %/*/*.o, $(EXTRA_OPERATORS))
 else
-clean: cyclean
+clean: cyclean $(EXTRA_PACKAGES_CLEAN)
 	$(RM) -r build lib bin *~ */*~ */*/*~ */*/*/*~ R-package/NAMESPACE R-package/man R-package/R/mxnet_generated.R \
 		R-package/inst R-package/src/*.o R-package/src/*.so mxnet_*.tar.gz
-	cd $(DMLC_CORE); make clean; cd -
-	cd $(PS_PATH); make clean; cd -
-	cd $(NNVM_PATH); make clean; cd -
+	cd $(DMLC_CORE); $(MAKE) clean; cd -
+	cd $(PS_PATH); $(MAKE) clean; cd -
+	cd $(NNVM_PATH); $(MAKE) clean; cd -
 endif
 
 clean_all: clean

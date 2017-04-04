@@ -18,9 +18,18 @@ NNVM_REGISTER_OP(_backward_copy)
 NNVM_REGISTER_OP(BlockGrad)
 .set_attr<FCompute>("FCompute<gpu>", IdentityCompute<gpu>);
 
+NNVM_REGISTER_OP(make_loss)
+.set_attr<FCompute>("FCompute<gpu>", IdentityCompute<gpu>);
+
 // identity output as first input, but attributes are constrainted to be like rhs
 NNVM_REGISTER_OP(_identity_with_attr_like_rhs)
 .set_attr<FCompute>("FCompute<gpu>", IdentityCompute<gpu>);
+
+NNVM_REGISTER_OP(Cast)
+.set_attr<FCompute>("FCompute<gpu>", CastCompute<gpu>);
+
+NNVM_REGISTER_OP(_backward_cast)
+.set_attr<FCompute>("FCompute<gpu>", CastCompute<gpu>);
 
 // negative
 NNVM_REGISTER_OP(negative)

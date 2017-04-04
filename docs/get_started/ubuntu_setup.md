@@ -1,17 +1,17 @@
 # Installing MXNet on Ubuntu
-MXNet currently supports Python, R, Julia, and Scala. For users of Python and R on Ubuntu operating systems, MXNet provides a set of Git Bash scripts that installs all of the required MXNet dependencies and the MXNet library.
+MXNet currently supports Python, R, Julia, Scala, and Perl. For users of Python and R on Ubuntu operating systems, MXNet provides a set of Git Bash scripts that installs all of the required MXNet dependencies and the MXNet library.
 
 The simple installation scripts set up MXNet for Python and R on computers running Ubuntu 12 or later. The scripts install MXNet in your home folder ```~/mxnet```.
 
 ## Prepare environment for GPU Installation
 
-If you plan to build with GPU, you need to set up environemtn for CUDA and CUDNN.
+If you plan to build with GPU, you need to set up the environment for CUDA and CUDNN.
 
-First download and install [CUDA 8 toolkit](https://developer.nvidia.com/cuda-toolkit).
+First, download and install [CUDA 8 toolkit](https://developer.nvidia.com/cuda-toolkit).
 
 Then download [cudnn 5](https://developer.nvidia.com/cudnn).
 
-Unzip the file and change to cudnn root directory. Move the header and libraries to your local CUDA Toolkit folder:
+Unzip the file and change to the cudnn root directory. Move the header and libraries to your local CUDA Toolkit folder:
 
 ```bash
     tar xvzf cudnn-8.0-linux-x64-v5.1-ga.tgz
@@ -21,7 +21,7 @@ Unzip the file and change to cudnn root directory. Move the header and libraries
     sudo ldconfig
 ```
 
-Finally add configurations to config.mk file:
+Finally, add configurations to config.mk file:
 
 ```bash
     cp make/config.mk .
@@ -64,7 +64,7 @@ You can view the installation script we just used to install MXNet for Python [h
 
 ### Install MXNet for R
 
-MXNet requires R-version to be 3.2.0 and above. If you are running earlier version of R, run below commands to update your R version, before running the installation script.
+MXNet requires R-version to be 3.2.0 and above. If you are running an earlier version of R, run below commands to update your R version, before running the installation script.
 
 ```bash
     sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys E084DAB9
@@ -137,7 +137,7 @@ Then build mxnet:
 
 Executing these commands creates a library called ```libmxnet.so```.
 
-Next, we install ```graphviz``` library that we use for visualizing network graphs you build on MXNet. We will also install [Jupyter Notebook](jupyter.readthedocs.io) used for running MXNet tutorials and examples.
+Next, we install ```graphviz``` library that we use for visualizing network graphs you build on MXNet. We will also install [Jupyter Notebook](http://jupyter.readthedocs.io/) used for running MXNet tutorials and examples.
 
 ```bash
     sudo apt-get install -y python-pip
@@ -148,9 +148,35 @@ Next, we install ```graphviz``` library that we use for visualizing network grap
 &nbsp;
 
 We have installed MXNet core library. Next, we will install MXNet interface package for programming language of your choice:
+- [Python](#install-the-mxnet-package-for-python)
 - [R](#install-the-mxnet-package-for-r)
 - [Julia](#install-the-mxnet-package-for-julia)
 - [Scala](#install-the-mxnet-package-for-scala)
+- [Perl](#install-the-mxnet-package-for-perl)
+
+### Install the MXNet Package for Python
+Next, we install Python interface for MXNet. Assuming you are in `~/mxnet` directory, run below commands.
+
+```bash
+	# Install MXNet Python package
+	cd python
+	sudo python setup.py install
+```
+
+Check if MXNet is properly installed.
+
+```bash
+	# You can change mx.cpu to mx.gpu
+	python
+	>>> import mxnet as mx
+	>>> a = mx.nd.ones((2, 3), mx.cpu())
+	>>> print ((a * 2).asnumpy())
+	[[ 2.  2.  2.]
+	 [ 2.  2.  2.]]
+```
+If you don't get an import error, then MXNet is ready for python.
+
+Note: You can update mxnet for python by repeating this step after re-building `libmxnet.so`.
 
 ### Install the MXNet Package for R
 
@@ -214,12 +240,12 @@ For Linux users, MXNet provides prebuilt binary packages that support computers 
 </dependency>
 ```
 
-For example, to download and build the 64-bit CPU-only version for OS X, use:
+For example, to download and build the 64-bit CPU-only version for Linux, use:
 
 ```HTML
 <dependency>
   <groupId>ml.dmlc.mxnet</groupId>
-  <artifactId>mxnet-full_2.10-linux-x86_64-gpu</artifactId>
+  <artifactId>mxnet-full_2.10-linux-x86_64-cpu</artifactId>
   <version>0.1.1</version>
 </dependency>
 ```
@@ -247,6 +273,30 @@ To install the MXNet Scala package into your local Maven repository, run the fol
 
 ```bash
     make scalainstall
+```
+### Install the MXNet Package for Perl
+
+Before you build MXNet for Scala from source code, you must complete [building the shared library](#build-the-shared-library). After you build the shared library, run the following command from the MXNet source root directory to build the MXNet Scala package:
+
+```bash
+    sudo apt-get install libmouse-perl pdl cpanminus swig libgraphviz-perl
+    cpanm -q -L "${HOME}/perl5" Function::Parameters
+
+    MXNET_HOME=${PWD}
+    export LD_LIBRARY_PATH=${MXNET_HOME}/lib
+    export PERL5LIB=${HOME}/perl5/lib/perl5
+
+    cd ${MXNET_HOME}/perl-package/AI-MXNetCAPI/
+    perl Makefile.PL INSTALL_BASE=${HOME}/perl5
+    make install
+
+    cd ${MXNET_HOME}/perl-package/AI-NNVMCAPI/
+    perl Makefile.PL INSTALL_BASE=${HOME}/perl5
+    make install
+
+    cd ${MXNET_HOME}/perl-package/AI-MXNet/
+    perl Makefile.PL INSTALL_BASE=${HOME}/perl5
+    make install
 ```
 
 **Note - ** You are more than welcome to contribute easy installation scripts for other operating systems and programming languages, see [community page](http://mxnet.io/community/index.html) for contributors guidelines.

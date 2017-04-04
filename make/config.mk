@@ -105,9 +105,11 @@ endif
 # to environment variable
 USE_INTEL_PATH = NONE
 
-# If use MKL, choose static link automatically to allow python wrapper
+# If use MKL only for BLAS, choose static link automatically to allow python wrapper
+ifeq ($(USE_MKL2017), 0)
 ifeq ($(USE_BLAS), mkl)
 USE_STATIC_MKL = 1
+endif
 else
 USE_STATIC_MKL = NONE
 endif
@@ -148,6 +150,12 @@ USE_S3 = 0
 # path to folders containing projects specific operators that you don't want to put in src/operators
 EXTRA_OPERATORS =
 
+#----------------------------
+# other features
+#----------------------------
+
+# Create C++ interface package
+USE_CPP_PACKAGE = 0
 
 #----------------------------
 # plugins

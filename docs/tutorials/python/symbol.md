@@ -23,7 +23,7 @@ The following code creates a two-layer perceptron network:
 
 Each symbol takes a (unique) string name. *Variable* often defines the inputs,
 or free variables. Other symbols take a symbol as their input (*data*),
-and might accept other hyperparameters, such as the number of hidden neurons (*num_hidden*)
+and might accept other hyper parameters, such as the number of hidden neurons (*num_hidden*)
 or the activation type (*act_type*).
 
 The symbol can be seen simply as a function taking several arguments whose
@@ -53,7 +53,7 @@ We can also specify the automatically generated names explicitly:
 
 ## More Complicated Composition
 
-MXNet provides well-optimized symbols for layers 
+MXNet provides well-optimized symbols for layers
 commonly used in deep learning (see
 [src/operator](https://github.com/dmlc/mxnet/tree/master/src/operator)). We can also easily define new operators
 in Python.  The following example first performs an element-wise add between two
@@ -83,6 +83,20 @@ forward composition exemplified in the preceding example:
 In the preceding example, *net* is used as a function to apply to an existing symbol
 *net*, and the resulting *composed_net* will replace the original argument *data* with
 *net2*.
+
+Once you start building some bigger networks, you might want to name some symbols with a common prefix to outline the structure of your network. You can use the [Prefix](https://github.com/dmlc/mxnet/blob/master/python/mxnet/name.py) NameManager as follow:
+
+```python
+   >>> data = mx.sym.Variable("data")
+   >>> net = data
+   >>> n_layer = 2
+   >>> for i in range(n_layer):
+   ...     with mx.name.Prefix("layer%d_" % (i + 1)):
+   ...         net = mx.sym.FullyConnected(data=net, name="fc", num_hidden=100)
+   ...
+   >>> net.list_arguments()
+   ['data', 'layer1_fc_weight', 'layer1_fc_bias', 'layer2_fc_weight', 'layer2_fc_bias']
+```
 
 ## Argument Shape Inference
 
@@ -116,7 +130,7 @@ The ```bind``` function will create a ```Executor``` that can be used to carry o
     >>> b = mx.nd.ones(3) * 2
     >>> # bind the symbol with real arguments
     >>> c_exec = C.bind(ctx=mx.cpu(), args={'A' : a, 'B': b})
-    >>> # do forward pass calclation.
+    >>> # do forward pass calculation.
     >>> c_exec.forward()
     >>> c_exec.outputs[0].asnumpy()
     [ 8.  8.  8.]

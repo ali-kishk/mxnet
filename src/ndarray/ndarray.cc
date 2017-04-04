@@ -316,7 +316,8 @@ void CopyFromTo(const NDArray &from, NDArray *to, int priority) {
           ctx.get_queue()->finish();
 #endif
         }, from.ctx(), const_vars, {ret.var()},
-        FnProperty::kCopyFromGPU, priority, PROFILER_MESSAGE("CopyGPU2GPU"));
+        from.dtype() != ret.dtype() ? FnProperty::kNormal : FnProperty::kCopyFromGPU,
+        priority, PROFILER_MESSAGE("CopyGPU2GPU"));
     } else {
       LOG(FATAL) << "unknown device mask";
     }
@@ -847,7 +848,7 @@ void Imdecode(NDArray *ret, NDArray mean, size_t index,
   if (ret->shape().ndim() == 3) {
     buff = ret->Reshape(mshadow::Shape4(1, ret->shape()[0], ret->shape()[1], ret->shape()[2]));
   } else {
-    CHECK_EQ(ret->shape().ndim(), 4);
+    CHECK_EQ(ret->shape().ndim(), 4U);
     buff = ret->Slice(index, index+1);
   }
   CHECK_EQ(buff.ctx().dev_mask(), cpu::kDevMask);
