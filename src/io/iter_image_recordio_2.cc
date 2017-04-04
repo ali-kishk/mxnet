@@ -15,6 +15,7 @@
 #include <dmlc/common.h>
 #include <dmlc/timer.h>
 #include <type_traits>
+#include "../common/utils.h"
 #include "./image_recordio.h"
 #include "./image_augmenter.h"
 #include "./image_iter_common.h"
